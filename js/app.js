@@ -522,14 +522,21 @@ function renderTargetPicker() {
   $('#srcRow').hidden = state.tunerRaw;
   const tg = tunerTarget();
   $('#tnTarget').innerHTML = state.tunerRaw ? 'Raw: the nearest note to whatever you play, in cents and Hz.'
-    : tg ? `Aiming at <b>${sharpWord(nameOf(tg.m))}</b>, ${freq(tg.m).toFixed(2)} Hz in equal temperament, from ${esc(tg.why)}.`
-    : 'This step has no single note to aim at, so the tuner shows the nearest note. Pick a key, or go to a tuning step.';
+    : tg ? `Aiming at <b>${sharpWord(nameOf(tg.m))}</b>, ${freq(tg.m).toFixed(2)} Hz in equal temperament, from ${esc(tg.why)}. Tap any key on the piano to aim there.`
+    : 'This step has no single note to aim at, so the tuner shows the nearest note. Tap a key on the piano to aim at it, or go to a tuning step.';
   $('#tnStretch').hidden = !(tg && (tg.m < midiOf('C3') || tg.m > midiOf('C6')));
   $('#tunerCard').dataset.mode = state.tunerRaw ? 'raw' : 'guided';
 }
 $$('#modeSeg button').forEach((b) => b.addEventListener('click', () => setRaw(b.dataset.raw === '1')));
 $('#srcStep').addEventListener('click', () => { state.tunerSource = 'step'; resetLock(); renderTargetPicker(); showTunerScene(); });
 $('#srcKey').addEventListener('click', () => { state.tunerSource = 'key'; resetLock(); renderTargetPicker(); showTunerScene(); });
+/* Tuner tab: tap a key on the piano to aim the tuner at it (Guided). "Step" in the picker goes back. */
+function aimTunerAt(m) {
+  state.note = m; state.tunerSource = 'key';
+  if (state.tunerRaw) setRaw(false);
+  resetLock(); showTunerScene();
+  toast('Tuner aiming at ' + sharpWord(nameOf(m)));
+}
 function resetLock() { lock.smooth = null; lock.since = 0; lock.locked = false; }
 
 /* 3-second pitch trace: cents against time, the green lock band labelled on the band itself.
@@ -858,7 +865,7 @@ function endGesture(e) {
   const dx = e.clientX - g.x0, dt = e.timeStamp - g.t0;
   if (g.mode === 'pending' && !g.multi && dt < 600) {
     const r = canvas.getBoundingClientRect(); const m = scene.pick(e.clientX - r.left, e.clientY - r.top);
-    if (m != null) { scene.pressKey(m); if (state.tab === 'keys') showNote(m, { ms: 250 }); else if (state.tab === 'steps') { toast('Showing ' + sharpWord(nameOf(m)) + ' in Keys'); openNote(m); } }
+    if (m != null) { scene.pressKey(m); if (state.tab === 'keys') showNote(m, { ms: 250 }); else if (state.tab === 'tuner') aimTunerAt(m); else if (state.tab === 'steps') { toast('Showing ' + sharpWord(nameOf(m)) + ' in Keys'); openNote(m); } }
   } else if (g.mode === 'swipe' && Math.abs(dx) > 40) showStep(state.step + (dx < 0 ? 1 : -1));
   g = null;
 }
@@ -893,3 +900,11 @@ window.addEventListener('resize', () => { scene.resize(); scene.instantOnce = tr
 if ('serviceWorker' in navigator && window.isSecureContext && !STILL) navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is optional */ });
 window.__app = { state, showStep, showNote, setTab, PLAN, phasesFor, renderOffline: audio.renderOffline, midiOf, nameOf };
 document.documentElement.dataset.ready = '1';
+
+// --- mobile baseline: no iOS selection / long-press magnifier on the app chrome,
+// and touches on the canvases go to the pointer gestures rather than the browser.
+document.addEventListener('selectstart', (e) => { if (!(e.target.closest && e.target.closest('input, textarea, .selectable'))) e.preventDefault(); });
+document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('canvas, button, .stage')) e.preventDefault(); });
+for (const cv of document.querySelectorAll('#c')) {   // the 3D stage only: #trace sits in a scrolling card
+  ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach((ev) => cv.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
+}

@@ -436,3 +436,9 @@ table.rates tr.now td { background: var(--wash); }
 }
 @media (min-width: 1500px) { .app, .bar { grid-template-columns: minmax(0, 1fr) 520px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+
+/* --- mobile baseline --- */
+html { background: var(--paper); }
+* { touch-action: manipulation; }
+.stage canvas, .stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+#trace { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }   /* in a scrolling card: let vertical scroll through */

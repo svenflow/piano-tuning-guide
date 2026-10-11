@@ -314,6 +314,28 @@ def beat_rate(x, sr, hz):
     amp = 2 * abs(np.sum(res * np.exp(-2j * np.pi * fb * t))) / len(res)
     return fb, float(amp / np.mean(env))
 
+async def t_tuner_tap_key(b, base):
+    ctx = await phone(b); page = await ctx.new_page()
+    await page.add_init_script(MIC_SPY)
+    await page.goto(base + "#step-9"); await ready(page); await page.wait_for_timeout(800)
+    await page.evaluate("window.__app.setTab('tuner')")
+    await page.wait_for_timeout(1300)
+    got = []
+    for m in (62, 64, 61):
+        pos = await page.evaluate(f"(() => {{ const s = window.__scene; const p = s.project(s.keyAnchor({m})); const r = document.querySelector('#c').getBoundingClientRect(); return [r.left + p.x, r.top + p.y + 6]; }})()")
+        await page.touchscreen.tap(pos[0], pos[1]); await page.wait_for_timeout(450)
+        got.append((m, await page.evaluate("[window.__app.state.tab, window.__app.state.tunerSource, window.__app.state.note]"), await page.evaluate("document.querySelector('#tnTarget').textContent")))
+    ok = all(st == ["tuner", "key", m] and t.startswith("Aiming at") for m, st, t in got)
+    check(ok, "Tuner tab: tapping a key on the piano aims the tuner at it and stays on the Tuner tab", str([(m, st, t[:30]) for m, st, t in got]))
+    await page.click("#srcStep"); await page.wait_for_timeout(300)
+    back = await page.evaluate("[window.__app.state.tunerSource, document.querySelector('#tnTarget').textContent.slice(0, 40)]")
+    check(back[0] == "step", "Tuner tab: the Step button goes back to the step's note", str(back))
+    mic = await page.evaluate("window.__mic.length")
+    check(mic == 0, "Tuner tab: tapping keys never asks for the microphone", f"calls={mic}")
+    blocked = await page.evaluate("""(() => { const out = {}; for (const id of ['trace', 'c']) { const el = document.getElementById(id); const ev = new TouchEvent('touchstart', { cancelable: true, bubbles: true, touches: [] }); el.dispatchEvent(ev); out[id] = ev.defaultPrevented; } return out; })()""")
+    check(blocked == {"trace": False, "c": True}, "touch blocking is scoped to the 3D stage: the tuner trace still lets a scroll start", str(blocked))
+    await ctx.close()
+
 async def t_audio(b, base):
     ctx = await desktop(b); page = await ctx.new_page(); errs = []; collect(page, errs, "audio")
     await page.goto(base + "#step-9"); await ready(page)
@@ -365,7 +387,7 @@ async def main():
     base = a.base.rstrip("/") + "/"
     async with async_playwright() as pw:
         b = await pw.chromium.launch(channel="chrome", headless=True, args=LAUNCH)
-        tests = [("load", t_load_and_errors), ("mic", t_mic_only_on_tap), ("tuner", t_tuner_targets), ("steps", t_steps_walk), ("keys", t_pick_a_note), ("audio", t_audio), ("offline", t_offline), ("mode", t_mode_remembered), ("landscape", t_landscape), ("sideways", t_no_sideways)]
+        tests = [("load", t_load_and_errors), ("mic", t_mic_only_on_tap), ("tuner", t_tuner_targets), ("steps", t_steps_walk), ("keys", t_pick_a_note), ("tunerkeys", t_tuner_tap_key), ("audio", t_audio), ("offline", t_offline), ("mode", t_mode_remembered), ("landscape", t_landscape), ("sideways", t_no_sideways)]
         for name, fn in tests:
             if a.only and a.only != name: continue
             try: await fn(b, base)
